@@ -1,0 +1,135 @@
+#!/bin/zsh
+
+I=0
+O="./main.png"
+W=1920
+H=1080
+D=480.0
+B=0
+C="matte-black"
+
+help(){
+	printf "FLAGS FOR EQUATIONTOPNG" | fmt -c
+	printf "\t-I input file or equation" | fmt -t 8
+	printf "\t-O outpput file(default main.png)" | fmt -t 8
+	printf "\t-W width in pxl(default 1920)" | fmt -t 8
+	printf "\t-H height in pxl(default 1080)" | fmt -t 8
+	printf "\t-D dpi (default 480.0)" | fmt -t 8
+	printf "\t 320, 480 dpi for normalsized equation" | fmt -t 12
+	printf "\t 640, 800, 1280 for zoom-in effect" | fmt -t 12
+	printf "\t-B background color (default transparent)" | fmt -t 8
+	printf "\t-C foreground color (default matte-black)" | fmt -t 8
+}
+
+progressBar(){
+	(echo $1 & progress_bar 60 $2) && echo "\n"
+}
+
+prepare_resources(){
+	mkdir  ./temp
+	touch ./temp/main.tex
+	touch ./temp/equation.tex
+	if [[ -f $I ]]
+	then
+		cp $I ./temp/input.tex
+	else
+		echo "$I" >> ./temp/equation.tex
+	fi
+}
+
+
+extract_equation(){
+	if [[ -f "input.tex" ]]
+	then	
+		cp input.tex equation.tex
+	fi
+}
+
+assemble_tex(){
+	echo "\\\documentclass{article}" >> $1
+	echo "\\\usepackage{geometry}" >> $1
+	echo "\\\usepackage{vaibhavblayer}" >> $1
+	echo "\\\geometry{paperwidth=$(($W/$D))in, paperheight=$(($H/$D))in, top=0pt, bottom=4pt}" >> $1
+	echo "\\\begin{document}" >> $1
+	if [[ $B != 0 ]]
+	then
+		echo "\\\pagecolor{$B}" >> $1
+	else
+		echo "\\\nopagecolor" >> $1
+	fi
+	echo "\\\color{$C}" >> $1
+	echo "\\\vspace*{\\\fill}" >> $1
+	echo "\\\input{equation.tex}" >> $1
+	echo "\\\vspace*{\\\fill}" >> $1
+	echo "\\\end{document}" >> $1
+}
+
+
+render_pdf(){
+	pdflatex main.tex
+	pdflatex main.tex
+}
+
+extract_png(){
+	pdftopng -I ./main.pdf -D $D
+}
+
+archive_equation(){
+	archived=$(date +%d%m%y%H%M%S).tex
+	sudo mv equation.tex /Users/.archive/equationtopng/$archived
+}
+
+delete_temp(){
+	rm -r ./temp
+}
+
+while getopts :hI:O:W:H:D:B:C:: opt
+do
+	case "$opt" in
+	h) help
+	   exit ;;
+	I) I=$OPTARG ;;
+	O) O=$OPTARG ;;
+	W) W=$OPTARG ;;
+	H) H=$OPTARG ;;
+	D) D=$OPTARG ;;
+	B) B=$OPTARG ;;
+	C) C=$OPTARG ;;
+	*) echo "$opt" ;;
+	esac
+done
+
+
+if [[ $I != 0 ]]
+then
+	#function calls
+	( prepare_resources && progressBar "\nPreparing resources" 0.002 ) &&
+	
+	cd ./temp &&
+
+	( extract_equation && progressBar "Extracting equation .." 0.005 ) && 
+	
+	( assemble_tex main.tex && progressBar "Assembling main.tex" 0.003 ) &&
+
+	( render_pdf | progressBar "Rendering pdf" 0.03 ) && 
+
+	( extract_png | progressBar "Extracting png from main.pdf" 0.015 ) &&
+
+	(
+	archive_equation &&
+	progressBar "Archiving equation.tex as $archived _into_ \n/Users/.archive/equationtopng" 0.002 ) &&
+	
+	cd ../ &&
+	cp ./temp/main-001.png $O &&
+	progressBar "Copying ./temp/main-001.png as $O ..." 0.002 &&
+
+	(delete_temp && progressBar "Deleting the temp directory ...." 0.005 ) &&
+
+	printf "Successfully rendered as $O from $I .\n" | fmt -c
+else
+	help
+	exit ;
+fi
+
+
+
